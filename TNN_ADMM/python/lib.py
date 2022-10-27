@@ -12,15 +12,16 @@ def get_device():
 def t_product(A, B):
     """Return the t-product of tensor A and B"""
     n1, _, n3 = A.size()
-    _, n2, _ = B.size()
+    n2 = B.size()[1]
 
     A_trans = torch.fft.fftn(A, dim=3)
     B_trans = torch.fft.fftn(B, dim=3)
     C_trans = torch.zeros((n1, n2, n3), device=get_device())
 
     for i in range(n3):
-        C_trans[:, :, i] = A_trans[:, :, i] * B_trans[:, :, i]
-    C = torch.fft.ifftn(C_trans, 3)
+        C_trans[:, :, i] = A_trans[:, :, i] @ B_trans[:, :, i]
+    C = torch.fft.ifftn(C_trans, dim=3)
+    return C
 
 def rank_r_tensor(r, m=100, l=100, n=100):
     p = r;
@@ -30,7 +31,6 @@ def rank_r_tensor(r, m=100, l=100, n=100):
 
 
 # Three types of matrices unfolding
-
 def unfold1(A):
     m, p, n = A.size()
     M = torch.zeros((p, m * n), device=get_device())
@@ -51,3 +51,76 @@ def unfold3(A):
     for i in range(p):
         M[:, i * m : (i + 1) * m] = A[:, i, :].squeeze().T
     return M
+
+def fold3(A, m, p, n):
+    myTensor = torch.zeros((m, p, n), device=get_device())
+    for i in range(p):
+        myTensor[:, i, :] = torch.reshape(
+            A[:, i * m : (i + 1) * m].T, (m, 1, n)
+        )
+    return myTensor
+
+def cross3Multiplication(A, M):
+    m, p, n = A.size()
+    C_temp = M @ unfold3(A)
+    return fold3(C_temp, m, p, n)
+
+def MStarMultiplication(A, B, M):
+    m, _, n = A.size()
+    l = B.size()[1]
+
+    A_hat = cross3Multiplication(A, M)
+    B_hat = cross3Multiplication(B, M)
+    C_hat = torch.zeros((m, l, n), device=get_device())
+
+    for i in range(n):
+        C_hat[:, :, i] = A_hat[:, :, i] @ B_hat[:, :, i]
+    C_temp = M.inverse() * unfold3(C_hat)
+    return fold3(C_temp, m, l, n)
+
+def tSVDM(A, M):
+    m, p, n = A.size()
+    A_hat = cross3Multiplication(A, M)
+    
+    U_hat = torch.zeros((m, m, n), device=get_device())
+    V_hat = torch.zeros((p, p, n), device=get_device())
+    S_hat = torch.zeros((m, p, n), device=get_device())
+
+    for i in range(n):
+        U_hat[:, :, i], S_hat[:, :, i], V_hat[:, :, i] = torch.svd(A_hat[:, :, i])
+
+    inverse_M = M.inverse()
+    U = cross3Multiplication(U_hat, inverse_M)
+    V = cross3Multiplication(U_hat, inverse_M)
+    S = cross3Multiplication(U_hat, inverse_M)
+
+    return U, V, S
+
+def shrinkTL1(s, l, a):
+    phi = torch.acos(1 - (0.5 * 27 * l * a * (a + 1) / (a + abs(s)) ** 3))
+    v = torch.sign(s) * (2 / 3 * (a + torch.abs*s(s) * torch.cos(phi / 3) - 2 * a / 3 + torch.abs(s) / 3 * (torch.sign(s - l))))
+    return v
+
+def shrinkL12(y, l, a=1):
+    x = torch.zeros(y.size(), device=get_device())
+    output = 0
+
+    if torch.max(torch.abs(y)) > 0:
+        if torch.max(torch.abs(y)) > l:
+            x = torch.max(torch.abs(y) - l, 0) * torch.sign(y)
+            x *= (torch.norm(x) + a * l) / torch.norm(x)
+            output = 1
+        else:
+            if torch.max(torch.abs(y)) > (1 - a) * l:
+                _, i = torch.max(torch.abs(y))
+                x[i][0] = (y[i][0] + (a - 1) * l) * torch.sign(y[i][0])
+            output = 2
+
+    return x, output
+
+def shrinkLp(x, r):
+    z = torch.zeros(x.size(), device=get_device())
+    phi = torch.acos(r / 8 * (torch.abs(x) / 3) ** (-1.5))
+    idx = torch.abs(x) > 3 / 4 * (r ** (2 / 3))
+    z[idx] = 4 * x[idx] / 3 * (torch.cos(torch.pi / 3 - phi[idx] / 3)) ** 2
+    return z

@@ -89,12 +89,13 @@ def tSVDM(A, M):
     S_hat = torch.zeros((m, p, n), device=get_device())
 
     for i in range(n):
-        U_hat[:, :, i], S_hat[:, :, i], V_hat[:, :, i] = torch.svd(A_hat[:, :, i])
-
+        U_hat[:, :, i], diag, V_hat[:, :, i] = torch.linalg.svd(A_hat[:, :, i])
+        for j in range(min(m, p)):
+            S[j, j, i] = diag[j]
     inverse_M = M.inverse()
     U = cross3Multiplication(U_hat, inverse_M)
-    V = cross3Multiplication(U_hat, inverse_M)
-    S = cross3Multiplication(U_hat, inverse_M)
+    V = cross3Multiplication(V_hat, inverse_M)
+    S = cross3Multiplication(S_hat, inverse_M)
 
     return U, V, S
 
@@ -109,7 +110,7 @@ def shrinkL12(y, l, a=1):
 
     if torch.max(torch.abs(y)) > 0:
         if torch.max(torch.abs(y)) > l:
-            x = torch.max(torch.abs(y) - l, 0)[0] * torch.sign(y)
+            x = torch.abs(y).clamp(min=-l, max=l)
             x *= (torch.norm(x) + a * l) / torch.norm(x)
             output = 1
         else:
@@ -134,8 +135,8 @@ def generate_sampling_tensor(p, q, r, sampling_type, sampling_ratio):
         # Random Sampling
         for i in range(r):
             temp = torch.flatten(sampling_tensor[:, :, i])
-            temp[sample(range(p * q), round(p * q))] = 1 # TODO
-            sampling_tensor[:, :, i] = torch.reshape(temp, p, q)
+            temp[sample(range(p * q), round(p * q))] = 1
+            sampling_tensor[:, :, i] = torch.reshape(temp, (p, q))
 
     elif sampling_type == "uniform column":
         sampling_ratio = round(1 / sampling_ratio)
@@ -152,7 +153,7 @@ def generate_sampling_tensor(p, q, r, sampling_type, sampling_ratio):
         for i in range(r):
             cols = sample(range(q), round(q * sampling_ratio))
             cols = sorted(cols)
-            current_index = 1
+            current_index = 0
             for j in range(q):
                 if current_index >= len(cols):
                     break

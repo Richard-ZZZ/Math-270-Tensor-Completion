@@ -3,52 +3,52 @@ from lib import *
 from tensor_admm import tensor_admm
 from random import randint
 
-print("Tensor Rank in the Sense of Tubal Rank")
-tensor_rank = 3;
+# print("Tensor Rank in the Sense of Tubal Rank")
+# tensor_rank = 3;
 
-current_rank = tensor_rank
-# default 100 * 100 * 100
-T = rank_r_tensor(current_rank, 40, 40, 40)
-print(f"Tensor rank: {current_rank}")
+# current_rank = tensor_rank
+# # default 100 * 100 * 100
+# T = rank_r_tensor(current_rank, 40, 40, 40)
+# print(f"Tensor rank: {current_rank}")
 
-p, q, r = T.size()
-d = torch.zeros(r, device=get_device())
-l = torch.zeros(r, device=get_device())
+# p, q, r = T.size()
+# d = torch.zeros(r, device=get_device())
+# l = torch.zeros(r, device=get_device())
 
-for j in range(r):
-    d[j] = randint(q * 0.75, q)
-    l[j] = randint(q * 0.75, p)
+# for j in range(r):
+#     d[j] = randint(q * 0.75, q)
+#     l[j] = randint(q * 0.75, p)
 
-sample_ratio = 0.3
-sampling_type = "random column"
-max_iteration = 800
-# Sample observed data based on the sampling type
-sampling_tensor = generate_sampling_tensor(p, q, r, sampling_type, sample_ratio)
-# TODO
+# sample_ratio = 0.3
+# sampling_type = "random column"
+# max_iteration = 800
+# # Sample observed data based on the sampling type
+# sampling_tensor = generate_sampling_tensor(p, q, r, sampling_type, sample_ratio)
+# # TODO
 
 
-max_iteration = 500
-print("ADMM TNN results:")
-tensor_admm(
-    T=T, 
-    sampling_tensor=sampling_tensor, 
-    proximal_type="TNN", 
-    max_iteration=max_iteration
-)
-print("ADMM TL1 results:")
-tensor_admm(
-    T=T, 
-    sampling_tensor=sampling_tensor, 
-    proximal_type="TL1", 
-    max_iteration=max_iteration
-)
-print("ADMM L12 results:")
-tensor_admm(
-    T=T, 
-    sampling_tensor=sampling_tensor, 
-    proximal_type="L12", 
-    max_iteration=max_iteration
-)
+# max_iteration = 500
+# print("ADMM TNN results:")
+# tensor_admm(
+#     T=T, 
+#     sampling_tensor=sampling_tensor, 
+#     proximal_type="TNN", 
+#     max_iteration=max_iteration
+# )
+# print("ADMM TL1 results:")
+# tensor_admm(
+#     T=T, 
+#     sampling_tensor=sampling_tensor, 
+#     proximal_type="TL1", 
+#     max_iteration=max_iteration
+# )
+# print("ADMM L12 results:")
+# tensor_admm(
+#     T=T, 
+#     sampling_tensor=sampling_tensor, 
+#     proximal_type="L12", 
+#     max_iteration=max_iteration
+# )
 
 
 # ==============================================
@@ -58,9 +58,10 @@ tensor_rank = 20
 T = torch.zeros((p, q, r), device=get_device())
 for i in range(r):
     A = torch.rand((p, q), device=get_device())
-    U, S, V = torch.svd(A)
-    for j in range(current_rank, min(p, q)):
-        S[j, j] = 0
+    S = torch.zeros((p, q), device=get_device())
+    U, diag, V = torch.linalg.svd(A)
+    for j in range(tensor_rank):
+        S[j, j] = diag[j]
     T[:, :, i] = U @ S @ V.T
 
 print("Tensor rank:", tensor_rank)
@@ -70,7 +71,7 @@ for i in range(r):
     d[j] = randint(1, q)
     l[j] = randint(1, p)
 
-sample_ratio = 0.3
+sampling_ratio = 0.3
 sampling_type = "random column"
 max_iteration = 500
 # Sample observed data based on the sampling type

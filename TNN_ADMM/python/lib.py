@@ -1,10 +1,12 @@
+from random import randint, sample
+from re import T
 import torch
 
 def get_device():
     if torch.cuda.is_available():
         device = "cuda:0"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        device = "mps"
+    # elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    #     device = "mps"
     else:
         device = "cpu"
     return torch.device(device)
@@ -14,19 +16,19 @@ def t_product(A, B):
     n1, _, n3 = A.size()
     n2 = B.size()[1]
 
-    A_trans = torch.fft.fftn(A, dim=3)
-    B_trans = torch.fft.fftn(B, dim=3)
+    A_trans = torch.fft.fftn(A, dim=2)
+    B_trans = torch.fft.fftn(B, dim=2)
     C_trans = torch.zeros((n1, n2, n3), device=get_device())
 
     for i in range(n3):
         C_trans[:, :, i] = A_trans[:, :, i] @ B_trans[:, :, i]
-    C = torch.fft.ifftn(C_trans, dim=3)
+    C = torch.fft.ifftn(C_trans, dim=2)
     return C
 
 def rank_r_tensor(r, m=100, l=100, n=100):
     p = r;
-    A = torch.random.rand(m, p, n).to(get_device())
-    B = torch.random.rand(p, l, n).to(get_device())
+    A = torch.rand(m, p, n).to(get_device())
+    B = torch.rand(p, l, n).to(get_device())
     return t_product(A, B)
 
 
@@ -98,7 +100,7 @@ def tSVDM(A, M):
 
 def shrinkTL1(s, l, a):
     phi = torch.acos(1 - (0.5 * 27 * l * a * (a + 1) / (a + abs(s)) ** 3))
-    v = torch.sign(s) * (2 / 3 * (a + torch.abs*s(s) * torch.cos(phi / 3) - 2 * a / 3 + torch.abs(s) / 3 * (torch.sign(s - l))))
+    v = torch.sign(s) * (2 / 3 * (a + torch.abs(s) * torch.cos(phi / 3) - 2 * a / 3 + torch.abs(s) / 3 * (torch.sign(s - l))))
     return v
 
 def shrinkL12(y, l, a=1):
@@ -107,7 +109,7 @@ def shrinkL12(y, l, a=1):
 
     if torch.max(torch.abs(y)) > 0:
         if torch.max(torch.abs(y)) > l:
-            x = torch.max(torch.abs(y) - l, 0) * torch.sign(y)
+            x = torch.max(torch.abs(y) - l, 0)[0] * torch.sign(y)
             x *= (torch.norm(x) + a * l) / torch.norm(x)
             output = 1
         else:
@@ -124,3 +126,41 @@ def shrinkLp(x, r):
     idx = torch.abs(x) > 3 / 4 * (r ** (2 / 3))
     z[idx] = 4 * x[idx] / 3 * (torch.cos(torch.pi / 3 - phi[idx] / 3)) ** 2
     return z
+
+def generate_sampling_tensor(p, q, r, sampling_type, sampling_ratio):
+    sampling_tensor = torch.zeros((p, q, r), device=get_device())
+    # Determine the sampling type
+    if sampling_type == "fully random":
+        # Random Sampling
+        for i in range(r):
+            temp = torch.flatten(sampling_tensor[:, :, i])
+            temp[sample(range(p * q), round(p * q))] = 1 # TODO
+            sampling_tensor[:, :, i] = torch.reshape(temp, p, q)
+
+    elif sampling_type == "uniform column":
+        sampling_ratio = round(1 / sampling_ratio)
+        # Uniform Column Sampling
+        for i in range(r):
+            # Choose a random column and spread to the two directions
+            rand_column = randint(1, q)
+            for j in range(q):
+                if (j - rand_column) % sampling_ratio == 0:
+                    sampling_tensor[:, j, i] = torch.ones(p, device=get_device())
+        
+    elif sampling_type == "random column":
+        # Random Column Sampling
+        for i in range(r):
+            cols = sample(range(q), round(q * sampling_ratio))
+            cols = sorted(cols)
+            current_index = 1
+            for j in range(q):
+                if current_index >= len(cols):
+                    break
+                if j == cols[current_index]:
+                    sampling_tensor[:, j, i] = torch.ones(p, device=get_device())
+                    current_index += 1
+    
+    else:
+        raise ValueError("Unsupported sampling type!")
+
+    return sampling_tensor

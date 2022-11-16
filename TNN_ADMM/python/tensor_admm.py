@@ -29,16 +29,29 @@ def tensor_admm(T, sampling_tensor, proximal_type, max_iteration):
         t = time.time()
         count += 1
         # X problem
-        YW_temp = torch.fft.fftn(Y - W, dim=2)
+        YW_temp = torch.fft.fft(Y - W, dim=2)
         N1, N2, N3 = YW_temp.size()
-        U = torch.zeros((N1, N1, N3), device=get_device())
-        S = torch.zeros((N1, N2, N3), device=get_device())
-        V = torch.zeros((N2, N2, N3), device=get_device())
+        U = torch.complex(
+            torch.zeros((N1, N1, N3), device=get_device()),
+            torch.zeros((N1, N1, N3), device=get_device())
+        )
+        S = torch.complex(
+            torch.zeros((N1, N2, N3), device=get_device()),
+            torch.zeros((N1, N2, N3), device=get_device())
+        )
+        V = torch.complex(
+            torch.zeros((N2, N2, N3), device=get_device()),
+            torch.zeros((N2, N2, N3), device=get_device())
+        )
+
         for i in range(n):
             U[:, :, i], diagonal, V[:, :, i] = torch.linalg.svd(YW_temp[:, :, i])
             # Different Proximal Types
             if proximal_type == "TNN":
-                diagonal_shrink = diagonal.clamp(min=-1/ro, max=1/ro)
+                diagonal_shrink = diagonal
+                diagonal_shrink[torch.abs(diagonal) <= 1 / ro] = 0
+                diagonal_shrink[diagonal > 1 / ro] -= 1 / ro
+                diagonal_shrink[diagonal < -1 / ro] += 1 / ro
             elif proximal_type == "TL1":
                 diagonal_shrink = shrinkTL1(diagonal, 1 / ro, 1e10)
             elif proximal_type == "L12":
@@ -47,8 +60,8 @@ def tensor_admm(T, sampling_tensor, proximal_type, max_iteration):
                 diagonal_shrink = shrinkLp(diagonal, 1)
             for j in range(min(N1, N2)):
                 S[j, j, i] = diagonal_shrink[j]
-            YW_temp[:, :, i] = U[:, :, i] @ S[:, :, i] @ V[:, :, i].T
-        X = torch.fft.ifftn(YW_temp, dim=2)
+            YW_temp[:, :, i] = U[:, :, i] @ S[:, :, i] @ V[:, :, i]
+        X = torch.fft.ifft(YW_temp, dim=2)
         observed_part = sampling_tensor * X
         recover_error = torch.norm(observed_part - T_sampled) / torch.norm(T_sampled)
         # Y problem
@@ -56,13 +69,14 @@ def tensor_admm(T, sampling_tensor, proximal_type, max_iteration):
         # W problem
         W += X - Y
         total_time += time.time() - t;
-        relative_error_list.append(torch.norm(X - T) / torch.norm(T))
+        relative_error = torch.norm(X - T) / torch.norm(T)
+        print(relative_error)
+        relative_error_list.append(relative_error)
         if recover_error < 1e-6 or count >= max_iteration:
             print("Iteration number is", count)
             print("Recovery error is", recover_error)
             T_completed = X
             relative_error = torch.norm(X - T) / torch.norm(T)
-            relative_error_list = [] # TODO
             return T_completed, relative_error, total_time, relative_error_list
 
         

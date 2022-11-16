@@ -16,13 +16,16 @@ def t_product(A, B):
     n1, _, n3 = A.size()
     n2 = B.size()[1]
 
-    A_trans = torch.fft.fftn(A, dim=2)
-    B_trans = torch.fft.fftn(B, dim=2)
-    C_trans = torch.zeros((n1, n2, n3), device=get_device())
+    A_trans = torch.fft.fft(A, dim=2)
+    B_trans = torch.fft.fft(B, dim=2)
+    C_trans = torch.complex(
+        torch.zeros((n1, n2, n3), device=get_device()),
+        torch.zeros((n1, n2, n3), device=get_device())
+    )
 
     for i in range(n3):
         C_trans[:, :, i] = A_trans[:, :, i] @ B_trans[:, :, i]
-    C = torch.fft.ifftn(C_trans, dim=2)
+    C = torch.fft.ifft(C_trans, dim=2)
     return C
 
 def rank_r_tensor(r, m=100, l=100, n=100):
@@ -100,8 +103,8 @@ def tSVDM(A, M):
     return U, V, S
 
 def shrinkTL1(s, l, a):
-    phi = torch.acos(1 - (0.5 * 27 * l * a * (a + 1) / (a + abs(s)) ** 3))
-    v = torch.sign(s) * (2 / 3 * (a + torch.abs(s) * torch.cos(phi / 3) - 2 * a / 3 + torch.abs(s) / 3 * (torch.sign(s - l))))
+    phi = torch.acos(1 - (0.5 * 27 * l * a * (a + 1)) / (a + abs(s)) ** 3)
+    v = torch.sign(s) * (2 / 3 * (a + torch.abs(s)) * torch.cos(phi / 3) - 2 * a / 3 + torch.abs(s) / 3) * (torch.sign(s - l))
     return v
 
 def shrinkL12(y, l, a=1):
@@ -110,7 +113,10 @@ def shrinkL12(y, l, a=1):
 
     if torch.max(torch.abs(y)) > 0:
         if torch.max(torch.abs(y)) > l:
-            x = torch.abs(y).clamp(min=-l, max=l)
+            x = y
+            x[torch.abs(y) <= l] = 0
+            x[y > l] -= l
+            x[y < -l] += l
             x *= (torch.norm(x) + a * l) / torch.norm(x)
             output = 1
         else:
@@ -135,7 +141,7 @@ def generate_sampling_tensor(p, q, r, sampling_type, sampling_ratio):
         # Random Sampling
         for i in range(r):
             temp = torch.flatten(sampling_tensor[:, :, i])
-            temp[sample(range(p * q), round(p * q))] = 1
+            temp[sample(range(p * q), round(p * q * sampling_ratio))] = 1
             sampling_tensor[:, :, i] = torch.reshape(temp, (p, q))
 
     elif sampling_type == "uniform column":

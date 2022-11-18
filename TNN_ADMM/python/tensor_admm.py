@@ -70,7 +70,8 @@ def tensor_admm(T, sampling_tensor, proximal_type, max_iteration):
         W += X - Y
         total_time += time.time() - t;
         relative_error = torch.norm(X - T) / torch.norm(T)
-        print(relative_error)
+        if not count % 100:
+            print(count, relative_error)
         relative_error_list.append(relative_error)
         if recover_error < 1e-6 or count >= max_iteration:
             print("Iteration number is", count)

@@ -166,7 +166,10 @@ def generate_sampling_tensor(p, q, r, sampling_type, sampling_ratio):
                 if j == cols[current_index]:
                     sampling_tensor[:, j, i] = torch.ones(p, device=get_device())
                     current_index += 1
-    
+    elif sampling_type == "inpainting":
+        removed = sample(range(p * q), round(p * q * sampling_ratio))
+        for i in removed:
+                sampling_tensor[i % p, i // p, :] = 1
     else:
         raise ValueError("Unsupported sampling type!")
 
